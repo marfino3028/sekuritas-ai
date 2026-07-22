@@ -1,0 +1,13 @@
+# --- Runtime inti (wajib untuk menjalankan stub) ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic==2.10.4
+
+# --- Model AI (aktifkan saat pipeline nyata dipakai; berat, butuh CPU/GPU memadai) ---
+# numpy==1.26.4
+# opencv-python-headless==4.10.0.84
+# paddleocr==2.9.1
+# paddlepaddle==2.6.2            # atau paddlepaddle-gpu untuk GPU
+# insightface==0.7.3
+# onnxruntime==1.20.1            # onnxruntime-gpu untuk GPU
