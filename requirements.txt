@@ -4,10 +4,6 @@ uvicorn[standard]==0.34.0
 python-multipart==0.0.20
 pydantic==2.10.4
 
-# --- Model AI (aktifkan saat pipeline nyata dipakai; berat, butuh CPU/GPU memadai) ---
-# numpy==1.26.4
-# opencv-python-headless==4.10.0.84
-# paddleocr==2.9.1
-# paddlepaddle==2.6.2            # atau paddlepaddle-gpu untuk GPU
-# insightface==0.7.3
-# onnxruntime==1.20.1            # onnxruntime-gpu untuk GPU
+# --- Model AI (berat) dipisah ke requirements-models.txt ---
+# Aktifkan engine asli:  pip install -r requirements.txt -r requirements-models.txt
+# lalu set OCR_ENGINE=paddle / FACE_MATCH_ENGINE=insightface / LIVENESS_ENGINE=silent-face-onnx

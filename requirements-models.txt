@@ -1,0 +1,17 @@
+# Dependency MODEL AI (berat) — install saat memakai engine asli, BUKAN stub.
+#   pip install -r requirements.txt -r requirements-models.txt
+# Aktifkan engine via .env: OCR_ENGINE=paddle, FACE_MATCH_ENGINE=insightface,
+# LIVENESS_ENGINE=silent-face-onnx (siapkan LIVENESS_MODEL_DIR berisi *.onnx).
+
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+
+# OCR KTP — PaddleOCR
+paddleocr==2.9.1
+paddlepaddle==2.6.2            # ganti paddlepaddle-gpu untuk GPU
+
+# Face match — InsightFace (ArcFace)
+insightface==0.7.3
+
+# Liveness (Silent-Face ONNX) + runtime InsightFace
+onnxruntime==1.20.1           # ganti onnxruntime-gpu untuk GPU

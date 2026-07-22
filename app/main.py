@@ -14,15 +14,26 @@ Tahap awal: implementasi memakai model open-source & self-hosted:
 Provider komersial (ADVANCE.AI/Sumsub/Veriff/dst) cukup ditambah sebagai
 adapter baru di sisi Laravel — service ini tetap kontraknya sama.
 """
-from fastapi import FastAPI, File, UploadFile, Header, HTTPException, Depends
+from fastapi import FastAPI, File, UploadFile, Header, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
 
 from app.config import settings
+from app.services.errors import ServiceError
 from app.services.ocr import extract_ktp
 from app.services.liveness import check_liveness
 from app.services.face_match import match_faces
 
 app = FastAPI(title="Victoria Sekuritas eKYC AI", version="0.1.0")
+
+
+@app.exception_handler(ServiceError)
+async def _service_error_handler(_: Request, exc: ServiceError):
+    # Terjemahkan error domain (gambar invalid, wajah tak terdeteksi, engine
+    # belum siap, dll) ke status code yang sesuai.
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.code, "message": exc.message},
+    )
 
 
 def verify_api_key(x_api_key: str | None = Header(default=None)):
