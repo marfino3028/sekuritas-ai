@@ -18,16 +18,38 @@ from app.services.image_utils import inspect_image
 _SESSION = None
 
 
-def check_liveness(image_bytes: bytes) -> dict:
+def check_liveness(image_bytes: bytes, expected_nik: str | None = None) -> dict:
     inspect_image(image_bytes)
 
     if settings.LIVENESS_ENGINE == "silent-face-onnx":
         try:
-            return _liveness_onnx(image_bytes)
+            result = _liveness_onnx(image_bytes)
         except (EngineUnavailableError, InferenceError):
             if not settings.ALLOW_STUB_FALLBACK:
                 raise
-    return _liveness_stub(image_bytes)
+            result = _liveness_stub(image_bytes)
+    else:
+        result = _liveness_stub(image_bytes)
+
+    # Pelengkap opsional: kalau di foto selfie ini ada juga KTP yang ikut
+    # kefoto (selfie sambil pegang KTP), cek NIK & cocokkan wajah kartu vs
+    # wajah orangnya. Tidak pernah menggagalkan /liveness meski gagal.
+    if settings.SELFIE_KTP_CHECK_ENABLED:
+        from app.services.selfie_ktp import analyze_selfie_with_ktp
+
+        result.update(analyze_selfie_with_ktp(image_bytes, expected_nik))
+    else:
+        result.update(
+            {
+                "ktp_detected": False,
+                "nik_in_photo": None,
+                "nik_match": None,
+                "id_face_match": None,
+                "id_face_match_score": None,
+            }
+        )
+
+    return result
 
 
 def _liveness_stub(image_bytes: bytes) -> dict:

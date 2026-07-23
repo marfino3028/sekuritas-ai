@@ -2,5 +2,12 @@ __pycache__/
 *.pyc
 .venv/
 .env
+model/
 models/
 *.onnx
+*.gguf
+
+# ocr-engine adalah repo terpisah (information_extraction) yang ditaruh di sini
+# sebagai service sidecar. Punya .git & riwayat sendiri, jangan ikut ditrack
+# sebagai bagian dari repo sekuritas-ai.
+ocr-engine/

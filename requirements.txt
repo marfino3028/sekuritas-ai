@@ -6,4 +6,6 @@ pydantic==2.10.4
 
 # --- Model AI (berat) dipisah ke requirements-models.txt ---
 # Aktifkan engine asli:  pip install -r requirements.txt -r requirements-models.txt
-# lalu set OCR_ENGINE=paddle / FACE_MATCH_ENGINE=insightface / LIVENESS_ENGINE=silent-face-onnx
+# lalu set OCR_ENGINE=nanonets / FACE_MATCH_ENGINE=insightface / LIVENESS_ENGINE=silent-face-onnx
+# (semua model, termasuk Nanonets-OCR-s, dijalankan IN-PROCESS - tidak ada
+# service HTTP terpisah lagi, jadi httpx tidak dibutuhkan di sini)

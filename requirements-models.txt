@@ -1,14 +1,22 @@
 # Dependency MODEL AI (berat) — install saat memakai engine asli, BUKAN stub.
 #   pip install -r requirements.txt -r requirements-models.txt
-# Aktifkan engine via .env: OCR_ENGINE=paddle, FACE_MATCH_ENGINE=insightface,
-# LIVENESS_ENGINE=silent-face-onnx (siapkan LIVENESS_MODEL_DIR berisi *.onnx).
+# Aktifkan engine via .env: OCR_ENGINE=nanonets, FACE_MATCH_ENGINE=insightface,
+# LIVENESS_ENGINE=silent-face-onnx (siapkan LIVENESS_MODEL_DIR berisi *.onnx),
+# SELFIE_KTP_ENGINE=nanonets_tesseract (cek KTP ikut kefoto di selfie).
 
 numpy==1.26.4
 opencv-python-headless==4.10.0.84
 
-# OCR KTP — PaddleOCR
-paddleocr==2.9.1
-paddlepaddle==2.6.2            # ganti paddlepaddle-gpu untuk GPU
+# OCR KTP (endpoint /ocr) DAN selfie+KTP (pelengkap /liveness): keduanya pakai
+# model GGUF Nanonets-OCR-s, dijalankan IN-PROCESS lewat llama-cpp-python
+# (lihat app/services/nanonets_engine.py) — bukan lagi service Flask terpisah.
+# PaddleOCR SUDAH DIHAPUS TOTAL dari project ini (diganti Nanonets).
+llama-cpp-python>=0.3.34
+huggingface_hub==0.27.1        # dipakai kalau ALLOW_MODEL_DOWNLOADS=true
+
+# Tesseract dipakai HANYA sebagai fallback ringan di selfie_ktp.py, kalau
+# Nanonets gagal/inference-nya tidak menemukan NIK 16 digit di foto.
+pytesseract==0.3.13             # WAJIB juga install binary: `brew install tesseract tesseract-lang`
 
 # Face match — InsightFace (ArcFace)
 insightface==0.7.3

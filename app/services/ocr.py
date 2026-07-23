@@ -2,38 +2,43 @@
 OCR KTP.
 
 Dua mode (dipilih via OCR_ENGINE di config):
-  - "stub"   : deterministik, tanpa model (default; validasi header + skor dummy).
-  - "paddle" : PaddleOCR (https://github.com/PaddlePaddle/PaddleOCR) — model asli.
+  - "stub"     : deterministik, tanpa model (default; validasi header + skor dummy).
+  - "nanonets" : model vision-language Nanonets-OCR-s (GGUF via llama-cpp-python),
+                 di-load IN-PROCESS lewat app/services/nanonets_engine.py — bukan
+                 lagi memanggil service Flask terpisah lewat HTTP.
 
-Import berat (paddleocr/opencv) dilakukan LAZY di dalam fungsi agar service tetap
-bisa di-import & di-compile tanpa dependency model.
+PaddleOCR sudah dihapus total dari service ini (per keputusan project: diganti
+model Nanonets lokal karena hasil PaddleOCR tidak memadai).
 """
 from __future__ import annotations
 
 import hashlib
-import re
+import logging
 
 from app.config import settings
 from app.services.errors import EngineUnavailableError, InferenceError
 from app.services.image_utils import inspect_image
 
-NIK_RE = re.compile(r"\b\d{16}\b")
-DATE_RE = re.compile(r"(\d{2})[-/. ](\d{2})[-/. ](\d{4})")
+logger = logging.getLogger("ekyc.ocr")
 
-_PADDLE = None
+# Field "inti" yang dipakai untuk menghitung confidence heuristik hasil Nanonets
+# (model vision ini tidak memberi skor per-field seperti PaddleOCR).
+_CORE_FIELDS = ("nik", "name", "birth_date", "gender", "address")
 
 
 def extract_ktp(image_bytes: bytes) -> dict:
     """Ekstrak field KTP dari bytes gambar. Selalu validasi header dulu."""
     info = inspect_image(image_bytes)  # raises InvalidImageError bila bukan gambar valid
 
-    if settings.OCR_ENGINE == "paddle":
+    if settings.OCR_ENGINE == "nanonets":
         try:
-            return _extract_paddle(image_bytes)
-        except (EngineUnavailableError, InferenceError):
+            return _extract_nanonets(image_bytes)
+        except (EngineUnavailableError, InferenceError) as exc:
             if not settings.ALLOW_STUB_FALLBACK:
                 raise
-            # fallback ke stub bila model belum tersedia
+            # fallback ke stub bila model Nanonets belum siap; tetap log
+            # alasan aslinya supaya kelihatan di terminal uvicorn.
+            logger.warning("Nanonets OCR gagal, fallback ke stub: %s", exc)
     return _extract_stub(image_bytes, info)
 
 
@@ -64,125 +69,55 @@ def _extract_stub(image_bytes: bytes, info) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# PADDLEOCR
+# Nanonets-OCR-s (in-process, lihat app/services/nanonets_engine.py)
 # --------------------------------------------------------------------------- #
-def _ocr_engine():
-    global _PADDLE
-    if _PADDLE is None:
-        try:
-            from paddleocr import PaddleOCR
-        except ImportError as exc:  # pragma: no cover - butuh extras model
-            raise EngineUnavailableError(
-                "paddleocr belum terpasang. `pip install paddleocr paddlepaddle`."
-            ) from exc
-        _PADDLE = PaddleOCR(
-            use_angle_cls=settings.PADDLE_USE_ANGLE_CLS,
-            lang=settings.PADDLE_LANG,
-            det_model_dir=str(settings.PADDLE_DET_MODEL_DIR) if settings.PADDLE_DET_MODEL_DIR else None,
-            rec_model_dir=str(settings.PADDLE_REC_MODEL_DIR) if settings.PADDLE_REC_MODEL_DIR else None,
-            cls_model_dir=str(settings.PADDLE_CLS_MODEL_DIR) if settings.PADDLE_CLS_MODEL_DIR else None,
-            use_gpu=settings.USE_GPU,
-            show_log=False,
-        )
-    return _PADDLE
+def _extract_nanonets(image_bytes: bytes) -> dict:
+    from app.services.nanonets_engine import extract as nanonets_extract
 
+    fields = nanonets_extract(image_bytes, settings.NANONETS_OCR_TEMPLATE)
 
-def _extract_paddle(image_bytes: bytes) -> dict:
-    from app.services.image_utils import decode_image, quality_metrics
+    filled_core = sum(1 for key in _CORE_FIELDS if fields.get(key))
+    confidence = int(round(100 * filled_core / len(_CORE_FIELDS))) if _CORE_FIELDS else 0
 
-    image = decode_image(image_bytes)  # BGR np.ndarray (raise EngineUnavailableError bila cv2 absen)
-    try:
-        result = _ocr_engine().ocr(image, cls=True)
-    except Exception as exc:  # pragma: no cover - runtime model
-        raise InferenceError(f"OCR gagal: {exc}") from exc
-
-    # PaddleOCR mengembalikan [[ [box, (text, score)], ... ]]
-    items: list[tuple[str, float]] = []
-    for page in result or []:
-        for line in page or []:
-            try:
-                text, score = line[1][0], float(line[1][1])
-            except (IndexError, TypeError, ValueError):
-                continue
-            if text and text.strip():
-                items.append((text.strip(), score))
-
-    lines = [t for t, _ in items]
-    fields = _parse_ktp(lines)
-    is_blur, is_low_light = quality_metrics(image)
-    avg_conf = int(round(100 * (sum(s for _, s in items) / len(items)))) if items else 0
+    is_blur, is_low_light = _quality_metrics_safe(image_bytes)
 
     return {
-        **fields,
-        "confidence": avg_conf,
+        # --- kontrak lama (dipakai FastApiProvider.php di sekuritas-api) ---
+        "nik": fields.get("nik"),
+        "name": fields.get("name"),
+        "birth_place": fields.get("birth_place"),
+        "birth_date": fields.get("birth_date"),
+        "gender": fields.get("gender"),
+        "address": fields.get("address"),
+        "religion": fields.get("religion"),
+        "marital_status": fields.get("marital_status"),
+        "occupation": fields.get("occupation"),
+        "confidence": confidence,
         "is_blur": is_blur,
         "is_low_light": is_low_light,
         "is_screenshot": False,
-        "engine": "paddle",
-        "lines": lines,
+        "engine": "nanonets",
+        # --- field tambahan khas template `ktp` ---
+        # tidak dipakai FastApiProvider.php saat ini, tapi tersimpan di kolom
+        # `raw` (lihat OcrResult::$raw) sehingga tetap bisa dipakai FE/CMS
+        # kalau nanti dibutuhkan, tanpa perlu ubah kontrak lagi.
+        "province": fields.get("province"),
+        "city": fields.get("city"),
+        "blood_type": fields.get("blood_type"),
+        "rt_rw": fields.get("rt_rw"),
+        "kelurahan_desa": fields.get("kelurahan_desa"),
+        "kecamatan": fields.get("kecamatan"),
+        "nationality": fields.get("nationality"),
+        "valid_until": fields.get("valid_until"),
     }
 
 
-# --------------------------------------------------------------------------- #
-# Parser field KTP (label-based heuristik)
-# --------------------------------------------------------------------------- #
-def _after_label(line: str) -> str:
-    # ambil teks setelah ':' bila ada, kalau tidak buang kata label pertama
-    if ":" in line:
-        return line.split(":", 1)[1].strip()
-    return line.strip()
+def _quality_metrics_safe(image_bytes: bytes) -> tuple[bool, bool]:
+    """Cek blur/low-light pakai OpenCV bila tersedia; fallback heuristik ukuran file."""
+    try:
+        from app.services.image_utils import decode_image, quality_metrics
 
-
-def _parse_ktp(lines: list[str]) -> dict:
-    text = "\n".join(lines)
-    upper = text.upper()
-
-    nik_match = NIK_RE.search(re.sub(r"\s", "", text))
-    fields: dict = {
-        "nik": nik_match.group(0) if nik_match else None,
-        "name": None,
-        "birth_place": None,
-        "birth_date": None,
-        "gender": None,
-        "address": None,
-        "religion": None,
-        "marital_status": None,
-        "occupation": None,
-    }
-
-    for line in lines:
-        u = line.upper()
-        if fields["name"] is None and "NAMA" in u:
-            val = _after_label(line)
-            if val and len(re.sub(r"[^A-Za-z ]", "", val).strip()) > 2:
-                fields["name"] = re.sub(r"[^A-Za-z .'-]", "", val).strip().upper()
-        elif ("TEMPAT" in u and "LAHIR" in u) or "TGL LAHIR" in u:
-            val = _after_label(line)
-            d = DATE_RE.search(val)
-            if d:
-                fields["birth_date"] = f"{d.group(3)}-{d.group(2)}-{d.group(1)}"
-                place = val[: d.start()].strip(" ,")
-                if place:
-                    fields["birth_place"] = re.sub(r"[^A-Za-z ]", "", place).strip().upper()
-        elif "JENIS KELAMIN" in u or "KELAMIN" in u:
-            if "PEREMPUAN" in u:
-                fields["gender"] = "PEREMPUAN"
-            elif "LAKI" in u:
-                fields["gender"] = "LAKI-LAKI"
-        elif "ALAMAT" in u and fields["address"] is None:
-            fields["address"] = _after_label(line)
-        elif "AGAMA" in u:
-            fields["religion"] = _after_label(line).upper() or None
-        elif "PERKAWINAN" in u or "STATUS" in u:
-            fields["marital_status"] = _after_label(line).upper() or None
-        elif "PEKERJAAN" in u:
-            fields["occupation"] = _after_label(line).upper() or None
-
-    # gender fallback dari seluruh teks
-    if fields["gender"] is None:
-        if "PEREMPUAN" in upper:
-            fields["gender"] = "PEREMPUAN"
-        elif "LAKI-LAKI" in upper or "LAKI LAKI" in upper:
-            fields["gender"] = "LAKI-LAKI"
-
-    return fields
+        image = decode_image(image_bytes)
+        return quality_metrics(image)
+    except Exception:  # pragma: no cover - opencv opsional
+        return len(image_bytes) < 30_000, len(image_bytes) < 20_000

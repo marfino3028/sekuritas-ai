@@ -78,11 +78,31 @@ class Settings:
     USE_GPU: bool
 
     OCR_ENGINE: str
-    PADDLE_LANG: str
-    PADDLE_USE_ANGLE_CLS: bool
-    PADDLE_DET_MODEL_DIR: Path | None
-    PADDLE_REC_MODEL_DIR: Path | None
-    PADDLE_CLS_MODEL_DIR: Path | None
+    NANONETS_OCR_TEMPLATE: str
+
+    SELFIE_KTP_CHECK_ENABLED: bool
+    SELFIE_KTP_ENGINE: str
+    TESSERACT_LANG: str
+    TESSERACT_CMD: str | None
+
+    NANONETS_MODEL_PATH: Path
+    NANONETS_MMPROJ_PATH: Path
+    NANONETS_REPO_ID: str
+    NANONETS_REVISION: str
+    NANONETS_MODEL_FILE: str
+    NANONETS_MMPROJ_FILE: str
+    NANONETS_CHAT_HANDLER: str
+    NANONETS_CTX_SIZE: int
+    NANONETS_N_GPU_LAYERS: int
+    NANONETS_N_THREADS: int
+    NANONETS_N_BATCH: int
+    NANONETS_FLASH_ATTN: bool
+    NANONETS_USE_MMAP: bool
+    NANONETS_USE_MLOCK: bool
+    NANONETS_MAX_TOKENS: int
+    NANONETS_TEMPERATURE: float
+    NANONETS_VERBOSE: bool
+    NANONETS_PRELOAD_ON_START: bool
 
     FACE_MATCH_ENGINE: str
     FACE_MATCH_THRESHOLD: float
@@ -112,9 +132,6 @@ class Settings:
             if item.strip()
         )
         model_dir = os.getenv("LIVENESS_MODEL_DIR", "").strip()
-        paddle_det_dir = os.getenv("PADDLE_DET_MODEL_DIR", "").strip()
-        paddle_rec_dir = os.getenv("PADDLE_REC_MODEL_DIR", "").strip()
-        paddle_cls_dir = os.getenv("PADDLE_CLS_MODEL_DIR", "").strip()
         return cls(
             API_KEY=os.getenv("EKYC_AI_API_KEY", "").strip(),
             MAX_UPLOAD_BYTES=_env_int("MAX_UPLOAD_BYTES", 10 * 1024 * 1024, minimum=1024),
@@ -122,18 +139,36 @@ class Settings:
             ALLOW_STUB_FALLBACK=_env_bool("ALLOW_STUB_FALLBACK", True),
             ALLOW_MODEL_DOWNLOADS=_env_bool("ALLOW_MODEL_DOWNLOADS", False),
             USE_GPU=_env_bool("USE_GPU", False),
-            OCR_ENGINE=_env_choice("OCR_ENGINE", "stub", {"stub", "paddle"}),
-            PADDLE_LANG=os.getenv("PADDLE_LANG", "id").strip() or "id",
-            PADDLE_USE_ANGLE_CLS=_env_bool("PADDLE_USE_ANGLE_CLS", True),
-            PADDLE_DET_MODEL_DIR=(
-                Path(paddle_det_dir).expanduser() if paddle_det_dir else None
+            OCR_ENGINE=_env_choice("OCR_ENGINE", "stub", {"stub", "nanonets"}),
+            NANONETS_OCR_TEMPLATE=os.getenv("NANONETS_OCR_TEMPLATE", "ktp").strip() or "ktp",
+            SELFIE_KTP_CHECK_ENABLED=_env_bool("SELFIE_KTP_CHECK_ENABLED", True),
+            SELFIE_KTP_ENGINE=_env_choice(
+                "SELFIE_KTP_ENGINE", "stub", {"stub", "nanonets_tesseract"}
             ),
-            PADDLE_REC_MODEL_DIR=(
-                Path(paddle_rec_dir).expanduser() if paddle_rec_dir else None
-            ),
-            PADDLE_CLS_MODEL_DIR=(
-                Path(paddle_cls_dir).expanduser() if paddle_cls_dir else None
-            ),
+            TESSERACT_LANG=os.getenv("TESSERACT_LANG", "ind+eng").strip() or "ind+eng",
+            TESSERACT_CMD=os.getenv("TESSERACT_CMD", "").strip() or None,
+            NANONETS_MODEL_PATH=Path(
+                os.getenv("NANONETS_MODEL_PATH", "./model/Nanonets-OCR-s-Q4_0.gguf")
+            ).expanduser().resolve(),
+            NANONETS_MMPROJ_PATH=Path(
+                os.getenv("NANONETS_MMPROJ_PATH", "./model/Nanonets-OCR-s-mmproj-F16.gguf")
+            ).expanduser().resolve(),
+            NANONETS_REPO_ID=os.getenv("NANONETS_REPO_ID", "unsloth/Nanonets-OCR-s-GGUF").strip(),
+            NANONETS_REVISION=os.getenv("NANONETS_REVISION", "main").strip() or "main",
+            NANONETS_MODEL_FILE=os.getenv("NANONETS_MODEL_FILE", "Nanonets-OCR-s-Q4_0.gguf").strip(),
+            NANONETS_MMPROJ_FILE=os.getenv("NANONETS_MMPROJ_FILE", "mmproj-F16.gguf").strip(),
+            NANONETS_CHAT_HANDLER=os.getenv("NANONETS_CHAT_HANDLER", "qwen2.5-vl").strip() or "qwen2.5-vl",
+            NANONETS_CTX_SIZE=_env_int("NANONETS_CTX_SIZE", 8192, minimum=512),
+            NANONETS_N_GPU_LAYERS=_env_int("NANONETS_N_GPU_LAYERS", -1, minimum=-1),
+            NANONETS_N_THREADS=_env_int("NANONETS_N_THREADS", 4, minimum=1),
+            NANONETS_N_BATCH=_env_int("NANONETS_N_BATCH", 2048, minimum=1),
+            NANONETS_FLASH_ATTN=_env_bool("NANONETS_FLASH_ATTN", True),
+            NANONETS_USE_MMAP=_env_bool("NANONETS_USE_MMAP", True),
+            NANONETS_USE_MLOCK=_env_bool("NANONETS_USE_MLOCK", False),
+            NANONETS_MAX_TOKENS=_env_int("NANONETS_MAX_TOKENS", 512, minimum=16),
+            NANONETS_TEMPERATURE=_env_float("NANONETS_TEMPERATURE", 0.0, minimum=0.0, maximum=2.0),
+            NANONETS_VERBOSE=_env_bool("NANONETS_VERBOSE", False),
+            NANONETS_PRELOAD_ON_START=_env_bool("NANONETS_PRELOAD_ON_START", False),
             FACE_MATCH_ENGINE=_env_choice(
                 "FACE_MATCH_ENGINE", "stub", {"stub", "insightface"}
             ),
