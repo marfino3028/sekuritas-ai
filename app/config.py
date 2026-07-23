@@ -11,6 +11,27 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def _load_dotenv() -> None:
+    """Muat file .env (bila ada) ke os.environ.
+
+    Tanpa dependency eksternal. Memakai setdefault agar variabel yang sudah
+    diekspor di shell tetap menang (perilaku 'immutable' seperti dotenv).
+    """
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if not env_path.exists():
+        return
+    for raw in env_path.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        value = value.split(" #", 1)[0].strip().strip('"').strip("'")
+        os.environ.setdefault(key.strip(), value)
+
+
+_load_dotenv()
+
+
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
